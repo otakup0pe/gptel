@@ -1291,6 +1291,20 @@ If nil, tool use is turned off."
           (const :tag "Force tool use" force)
           (const :tag "Turn Off" nil)))
 
+(defcustom gptel-request-disambiguate-tool t
+  "Whether to disambiguate duplicate tool names by category.
+
+When non-nil and tools with identical names exist across
+different categories, gptel will prefix tool names with their
+category (e.g., \"emacs_read_buffer\" for a tool named
+\"read_buffer\" in category \"emacs\").
+
+Tool descriptions remain unchanged.  This ensures unique tool
+names when communicating with the LLM while maintaining clarity
+about tool provenance."
+  :type 'boolean
+  :group 'gptel)
+
 (defcustom gptel-confirm-tool-calls 'auto
   "Whether tool calls should wait for the user to run them.
 
@@ -1509,6 +1523,68 @@ callback as its first argument, which it runs with the result:
            (alist-get category gptel--known-tools nil nil #'equal)
            nil nil #'equal)
           tool)))
+
+(defun gptel--find-duplicate-tool-names (tools)
+  "Return alist of tool names appearing in multiple categories.
+
+TOOLS is a list of `gptel-tool' structs.
+
+Returns an alist where keys are duplicate tool names and values
+are lists of categories containing that name:
+  ((\"read_file\" \"filesystem\" \"emacs\")
+   (\"search\" \"web\" \"database\"))"
+  (let ((name-to-categories (make-hash-table :test 'equal))
+        duplicates)
+    ;; Build map of tool-name -> list of categories
+    (dolist (tool tools)
+      (let* ((name (gptel-tool-name tool))
+             (category (or (gptel-tool-category tool) "misc"))
+             (existing (gethash name name-to-categories)))
+        (puthash name 
+                 (if existing
+                     (cl-adjoin category existing :test #'equal)
+                   (list category))
+                 name-to-categories)))
+    ;; Collect names with multiple categories
+    (maphash (lambda (name categories)
+               (when (> (length categories) 1)
+                 (push (cons name categories) duplicates)))
+             name-to-categories)
+    duplicates))
+
+(defun gptel--disambiguate-tool-name (tool duplicates)
+  "Return disambiguated name for TOOL if needed.
+
+TOOL is a `gptel-tool' struct.
+DUPLICATES is the alist returned by `gptel--find-duplicate-tool-names'.
+
+If TOOL's name appears in DUPLICATES, returns \"category_toolname\".
+Otherwise returns the original tool name."
+  (let ((name (gptel-tool-name tool))
+        (category (or (gptel-tool-category tool) "misc")))
+    (if (assoc name duplicates)
+        (concat category "_" name)
+      name)))
+
+(defun gptel--maybe-disambiguate-tools (tools)
+  "Return copy of TOOLS with disambiguated names if needed.
+
+TOOLS is a list of `gptel-tool' structs.
+
+When `gptel-request-disambiguate-tool' is non-nil and duplicate
+tool names exist across categories, returns a new list of tools
+with disambiguated names.  Otherwise returns TOOLS unchanged."
+  (if (and gptel-request-disambiguate-tool tools)
+      (let ((duplicates (gptel--find-duplicate-tool-names tools)))
+        (if duplicates
+            (mapcar (lambda (tool)
+                      (let ((new-tool (gptel--copy-tool tool))
+                            (new-name (gptel--disambiguate-tool-name tool duplicates)))
+                        (setf (gptel-tool-name new-tool) new-name)
+                        new-tool))
+                    tools)
+          tools))
+    tools))
 
 (cl-defgeneric gptel--parse-tools (_backend tools)
   "Parse TOOLS and return a list of prompts.
@@ -2095,7 +2171,9 @@ Initiate the request when done."
         (plist-put info :model gptel-model)
         (when gptel-include-reasoning   ;Required for next-request-only scope
           (plist-put info :include-reasoning gptel-include-reasoning))
+        ;; Disambiguate tools BEFORE creating request data
         (when (and gptel-use-tools gptel-tools)
+          (setq gptel-tools (gptel--maybe-disambiguate-tools gptel-tools))
           (plist-put info :tools gptel-tools))
         (plist-put info :data
                    (gptel--request-data gptel-backend full-prompt)))
