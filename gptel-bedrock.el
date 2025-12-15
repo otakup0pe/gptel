@@ -544,6 +544,7 @@ Convenient to use with `cl-multiple-value-bind'"
     (claude-3-5-haiku-20241022   . "anthropic.claude-3-5-haiku-20241022-v1:0")
     (claude-3-opus-20240229      . "anthropic.claude-3-opus-20240229-v1:0")
     (claude-3-haiku-20240307     . "anthropic.claude-3-haiku-20240307-v1:0")
+    (nova-2-lite-v1              . "amazon.nova-2-lite-v1:0")
     (mistral-7b                  . "mistral.mistral-7b-instruct-v0:2")
     (mistral-8x7b                . "mistral.mixtral-8x7b-instruct-v0:1")
     (mistral-large-2402          . "mistral.mistral-large-2402-v1:0")
@@ -571,10 +572,10 @@ IDs can be added or replaced by calling
 (defun gptel-bedrock--get-model-id (model &optional region)
   "Return the Bedrock model ID for MODEL.
 
-REGION is one of apac, eu or us."
+REGION is one of global, apac, eu or us."
   (concat
    (when region
-     (or (member region '(apac eu us))
+     (or (member region '(global apac eu us))
 	 (error "Unknown Bedrock region %s" region))
      (concat (symbol-name region) "."))
    (or (alist-get model gptel-bedrock--model-ids nil nil #'eq)
