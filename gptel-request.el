@@ -1540,7 +1540,7 @@ are lists of categories containing that name:
       (let* ((name (gptel-tool-name tool))
              (category (or (gptel-tool-category tool) "misc"))
              (existing (gethash name name-to-categories)))
-        (puthash name 
+        (puthash name
                  (if existing
                      (cl-adjoin category existing :test #'equal)
                    (list category))
@@ -1585,6 +1585,86 @@ with disambiguated names.  Otherwise returns TOOLS unchanged."
                     tools)
           tools))
     tools))
+
+(defun gptel--resolve-tool-name (name-or-path)
+  "Resolve NAME-OR-PATH to a tool, handling both original and disambiguated names.
+
+NAME-OR-PATH can be:
+- A list like \\='(\"category\" \"toolname\")
+- An original tool name like \"list_directory\" or \"search_search\"
+- A disambiguated name like \"filesystem_list_directory\" or \"mcp-google_search_search\"
+
+Returns the resolved `gptel-tool' struct or nil if not found.
+
+Disambiguated names use the format \"category_toolname\", where:
+- Both category and toolname can contain hyphens and underscores
+- A single underscore is used as the separator between them."
+  (cond
+   ;; Handle list form: '("category" "toolname")
+   ((consp name-or-path)
+    (condition-case nil
+        (gptel-get-tool name-or-path)
+      (error nil)))
+   ;; Handle string: try multiple strategies
+   ((stringp name-or-path)
+    (or
+     ;; First: try as direct tool name across all categories
+     (cl-loop for (_ . tools) in gptel--known-tools
+              if (assoc name-or-path tools)
+              return (cdr it))
+     ;; Second: try parsing as disambiguated "category_toolname"
+     ;; Since both category and toolname can contain underscores, we try
+     ;; splitting at each underscore position to find a valid match
+     (let ((underscore-parts (split-string name-or-path "_" t)))
+       (when (> (length underscore-parts) 1)
+         ;; Try each possible split point (from left to right)
+         (cl-loop for i from 1 below (length underscore-parts)
+                  for category = (string-join (cl-subseq underscore-parts 0 i) "_")
+                  for toolname = (string-join (cl-subseq underscore-parts i) "_")
+                  for tool = (condition-case nil
+                                 (gptel-get-tool (list category toolname))
+                               (error nil))
+                  when tool return tool)))))
+   (t nil)))
+
+(defun gptel--validate-and-prepare-tools (tool-specs)
+  "Validate and prepare TOOL-SPECS for use in a gptel request.
+
+TOOL-SPECS can be:
+- A list of `gptel-tool' structs (returned as-is after disambiguation)
+- A list of tool names (strings or symbols) to look up
+- A single tool name (string or symbol) to look up
+- nil (returns nil)
+
+Tool names can be:
+- Original names like \"list_directory\"
+- Category-prefixed paths like \\='(\"filesystem\" \"list_directory\")
+- Disambiguated names like \"filesystem-list_directory\"
+
+Returns a list of validated and disambiguated `gptel-tool' structs
+ready to be sent with a request, or nil if TOOL-SPECS is nil or
+no valid tools are found.
+
+Signals an error if any tool name cannot be resolved."
+  (when tool-specs
+    (let ((tools
+           (cond
+            ;; Already a list of tool structs
+            ((and (listp tool-specs)
+                  (gptel-tool-p (car tool-specs)))
+             tool-specs)
+            ;; List of tool names (strings or symbols)
+            ((listp tool-specs)
+             (mapcar (lambda (name-or-path)
+                       (or (gptel--resolve-tool-name name-or-path)
+                           (error "Tool not found: %S" name-or-path)))
+                     tool-specs))
+            ;; Single tool name
+            (t
+             (list (or (gptel--resolve-tool-name tool-specs)
+                       (error "Tool not found: %S" tool-specs)))))))
+      ;; Disambiguate tool names if needed
+      (gptel--maybe-disambiguate-tools tools))))
 
 (cl-defgeneric gptel--parse-tools (_backend tools)
   "Parse TOOLS and return a list of prompts.
@@ -2171,9 +2251,8 @@ Initiate the request when done."
         (plist-put info :model gptel-model)
         (when gptel-include-reasoning   ;Required for next-request-only scope
           (plist-put info :include-reasoning gptel-include-reasoning))
-        ;; Disambiguate tools BEFORE creating request data
         (when (and gptel-use-tools gptel-tools)
-          (setq gptel-tools (gptel--maybe-disambiguate-tools gptel-tools))
+          (setq gptel-tools (gptel--validate-and-prepare-tools gptel-tools))
           (plist-put info :tools gptel-tools))
         (plist-put info :data
                    (gptel--request-data gptel-backend full-prompt)))
@@ -2791,7 +2870,7 @@ PROCESS and _STATUS are process parameters."
         (goto-char (process-mark process))
         (insert output)
         (set-marker (process-mark process) (point)))
-      
+
       ;; Find HTTP status
       (unless (plist-get proc-info :http-status)
         (save-excursion
@@ -2806,7 +2885,7 @@ PROCESS and _STATUS are process parameters."
             (plist-put proc-info :http-status http-status)
             (plist-put proc-info :status (string-trim http-msg))
             (gptel--fsm-transition fsm))))
-      
+
       (when-let* ((http-msg (plist-get proc-info :status))
                   (http-status (plist-get proc-info :http-status)))
         ;; Find data chunk(s) and run callback
