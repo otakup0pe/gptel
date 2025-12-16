@@ -1256,20 +1256,6 @@ If nil, tool use is turned off."
           (const :tag "Force tool use" force)
           (const :tag "Turn Off" nil)))
 
-(defcustom gptel-request-disambiguate-tool t
-  "Whether to disambiguate duplicate tool names by category.
-
-When non-nil and tools with identical names exist across
-different categories, gptel will prefix tool names with their
-category (e.g., \"emacs_read_buffer\" for a tool named
-\"read_buffer\" in category \"emacs\").
-
-Tool descriptions remain unchanged.  This ensures unique tool
-names when communicating with the LLM while maintaining clarity
-about tool provenance."
-  :type 'boolean
-  :group 'gptel)
-
 (defcustom gptel-confirm-tool-calls 'auto
   "Whether tool calls should wait for the user to run them.
 
