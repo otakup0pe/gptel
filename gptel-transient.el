@@ -1171,16 +1171,11 @@ only (\"oneshot\")."
                       :format " %d")
                 infixes-for-category)))))]]
   (interactive)
-  ;; Initialize scope with currently selected tools, normalizing to ensure
-  ;; counts for duplicate highlighting are accurate. Provide a fallback
-  ;; category "misc" for tools without an explicit category.
-  (let* ((raw (mapcar (lambda (tool)
-                        (list (or (gptel-tool-category tool) "misc")
-                              (gptel-tool-name tool)))
-                      gptel-tools))
-         (scope (list :tools raw)))
-    (gptel--tools-scope-normalize scope)
-    (transient-setup 'gptel-tools nil nil :scope scope)))
+  (transient-setup
+   'gptel-tools nil nil
+   :scope (list :tools (mapcar (lambda (tool) (list (gptel-tool-category tool)
+                                               (gptel-tool-name tool)))
+                               gptel-tools))))
 
 
 ;; * Transient Infixes
