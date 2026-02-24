@@ -3,7 +3,7 @@
 ;; Copyright (C) 2023-2025  Karthik Chikmagalur
 
 ;; Author: Karthik Chikmagalur <karthik.chikmagalur@gmail.com>
-;; Version: 0.9.9.3
+;; Version: 0.9.9.4
 ;; Package-Requires: ((emacs "27.1") (transient "0.7.4") (compat "30.1.0.0"))
 ;; Keywords: convenience, tools
 ;; URL: https://github.com/karthink/gptel
@@ -68,22 +68,20 @@
 ;;
 ;; ChatGPT is configured out of the box.  For the other sources:
 ;;
-;; - For Azure: define a gptel-backend with `gptel-make-azure', which see.
-;; - For Gemini: define a gptel-backend with `gptel-make-gemini', which see.
-;; - For Anthropic (Claude): define a gptel-backend with `gptel-make-anthropic',
-;;   which see.
-;; - For AI/ML API, Together.ai, Anyscale, Groq, OpenRouter, DeepSeek, Cerebras or
-;;   Github Models: define a gptel-backend with `gptel-make-openai', which see.
-;; - For PrivateGPT: define a backend with `gptel-make-privategpt', which see.
-;; - For Perplexity: define a backend with `gptel-make-perplexity', which see.
-;; - For Deepseek: define a backend with `gptel-make-deepseek', which see.
-;; - For Kagi: define a gptel-backend with `gptel-make-kagi', which see.
+;; - For Azure: define a gptel-backend with `gptel-make-azure'.
+;; - For Gemini: define a gptel-backend with `gptel-make-gemini'.
+;; - For Anthropic (Claude): define a gptel-backend with `gptel-make-anthropic'.
+;; - For AI/ML API, Together.ai, Anyscale, Groq, OpenRouter, DeepSeek, Cerebras
+;;   or Github Models: define a gptel-backend with `gptel-make-openai'.
+;; - For PrivateGPT: define a backend with `gptel-make-privategpt'.
+;; - For Perplexity: define a backend with `gptel-make-perplexity'.
+;; - For Deepseek: define a backend with `gptel-make-deepseek'.
+;; - For Kagi: define a gptel-backend with `gptel-make-kagi'.
 ;;
 ;; For local models using Ollama, Llama.cpp or GPT4All:
 ;;
 ;; - The model has to be running on an accessible address (or localhost)
-;; - Define a gptel-backend with `gptel-make-ollama' or `gptel-make-gpt4all',
-;;   which see.
+;; - Define a gptel-backend with `gptel-make-ollama' or `gptel-make-gpt4all'.
 ;; - Llama.cpp or Llamafiles: Define a gptel-backend with `gptel-make-openai'.
 ;;
 ;; Consult the package README for examples and more help with configuring
@@ -190,7 +188,7 @@
 ;; usage.
 
 ;;; Code:
-(defconst gptel-version "0.9.9.3")
+(defconst gptel-version "0.9.9.4")
 
 (declare-function markdown-mode "markdown-mode")
 (declare-function gptel-menu "gptel-transient")
@@ -600,7 +598,9 @@ the gptel property is set to just PROP.
 
 The legacy structure, a list of (BEG . END) is also supported and will be
 applied before being re-persisted in the new structure."
-  (let ((modified (buffer-modified-p)))
+  ;; Run silently to avoid `gptel--inherit-stickiness' and other hooks that
+  ;; might modify the gptel text property.
+  (with-silent-modifications
     (if (symbolp (caar bounds-alist))
         (mapc
          (lambda (bounds)
@@ -621,8 +621,7 @@ applied before being re-persisted in the new structure."
       (mapc (lambda (bound)
               (add-text-properties
                (car bound) (cdr bound) '(gptel response front-sticky (gptel))))
-            bounds-alist))
-    (set-buffer-modified-p modified)))
+            bounds-alist))))
 
 (defun gptel--restore-state ()
   "Restore gptel state when turning on `gptel-mode'."
@@ -967,7 +966,10 @@ To enable this face for responses, `gptel-highlight-methods' must be set."
   :group 'gptel)
 
 (defface gptel-response-fringe-highlight
-  '((t :inherit outline-1 :height reset))
+  ;; NOTE: Remove conditional after we drop Emacs 28.1 (#1254)
+  (if (< emacs-major-version 29)
+      '((t :inherit outline-1 :height 1.0))
+    '((t :inherit outline-1 :height reset)))
   "LLM response fringe/margin face when using `gptel-highlight-mode'.
 
 To enable response highlights in the fringe, `gptel-highlight-methods'
