@@ -1201,14 +1201,11 @@ only (\"oneshot\")."
                       :format " %d")
                 infixes-for-category)))))]]
   (interactive)
-  (let* ((raw (mapcar (lambda (tool)
-                         (list (gptel-tool-category tool)
-                               (gptel-tool-name tool)))
-                       gptel-tools))
-         (scope (list :tools raw)))
-    ;; Normalize before rendering so counts are correct
-    (gptel--tools-scope-normalize scope)
-    (transient-setup 'gptel-tools nil nil :scope scope)))
+  (transient-setup
+   'gptel-tools nil nil
+   :scope (list :tools (mapcar (lambda (tool) (list (gptel-tool-category tool)
+                                               (gptel-tool-name tool)))
+                               gptel-tools))))
 
 
 ;; * Transient Infixes
